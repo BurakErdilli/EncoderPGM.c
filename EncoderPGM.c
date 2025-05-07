@@ -1,330 +1,613 @@
-//Burak Erdilli 19011046
+// Burak Erdilli 19011046
+// Revised, fixed, improved, and optimized version
 
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
-int refreshArray(int*, int, int);
-bool headerInfo(FILE*, int*, int*);
-void changePixelColor(int*, int);
-void changeSpecificPixel(int*, int);
-void printHistogram(int*, int);
-void encoder(FILE*, int, int);
-void decoder(int*, int);
+// Structure to hold run-length encoded data
+typedef struct {
+    int width;
+    int height;
+    int num_pairs; // Number of count-value pairs
+    int *data;     // Array storing pairs: [count1, value1, count2, value2, ...]
+} EncodedData;
 
-bool headerInfo(FILE* fp, int* width, int* height){
-	int bit_depth;	
-	char image[5];
-	fscanf(fp, "%s %d %d %d",image,width,height,&bit_depth);
-	if(strcmp(image,"P2") == 0){
-		printf("\n Header information of the file: \n\n");
-		printf("%s %d %d %d\n",image,*width,*height,bit_depth);
-		return true;
-	}
-	fclose(fp);
-	return false;
-}
-int refreshArray(int* arrayPointer, int width, int height){
-	FILE* fp = fopen("test_encoded.txt","r");
-	
-	if(fp){
-		int lenght = 0;
-		printf("\n\n");
-		while(!feof(fp)){
-			fscanf(fp, "%d ",&arrayPointer[lenght]);
-			lenght++;
-		}
-		fclose(fp);
-		return lenght;
-	}
-}
-void encoder(FILE* fp, int width, int height){
+// Function Prototypes
+bool read_pgm_header(FILE* fp, int* width, int* height, int* max_val);
+EncodedData* encode_pgm(FILE* fp, int width, int height, int max_val);
+bool write_encoded_data(const char* filename, const EncodedData* encoded_data);
+EncodedData* load_encoded_data(const char* filename);
+bool decode_pgm(const EncodedData* encoded_data, const char* output_filename);
+void change_pixel_color(EncodedData* encoded_data, int oldPixel, int newPixel);
+void print_histogram(const EncodedData* encoded_data);
+void free_encoded_data(EncodedData* encoded_data);
 
-	int index=1;
-	int element1, element2;
-	FILE* file = fopen("test_encoded.txt","w+");
-	if(file){
-		fprintf(file,"%d %d ", width, height);
+// --- Helper Functions ---
 
-		fscanf(fp, "%d", &element1);
-		element2 = element1;
-		if(!feof(fp)){
-			while(!feof(fp)){
-				fscanf(fp, "%d", &element1);
-				if(element1 == element2){
-					index++;
-				}else{
+// Reads PGM (P2) header information
+// Returns true on success, false on failure or if not P2 format.
+bool read_pgm_header(FILE* fp, int* width, int* height, int* max_val) {
+    char image_type[3]; // Should be "P2"
+    int read_count;
 
-					fprintf(file, "%d %d ", index, element2);
-					index=1;
-				}
-				if(feof(fp)){
-					index--;
+    // Read PGM type (P2), width, height, and max_val
+    read_count = fscanf(fp, "%2s %d %d %d", image_type, width, height, max_val);
 
-					fprintf(file, "%d %d ", index, element1);
-					fclose(file);
-				}
-				element2 = element1;
-			}
-		}else{
+    if (read_count == 4 && strcmp(image_type, "P2") == 0) {
+        // Skip any remaining whitespace after max_val
+        char c;
+        while ((c = fgetc(fp)) != EOF && (c == ' ' || c == '\t' || c == '\n' || c == '\r'));
+        if (c != EOF) ungetc(c, fp); // Put non-whitespace character back
 
-			fprintf(file, "%d %d ", index, element1);
-			fclose(file);
-		}
-	}else{
-		printf("\nError! File could not be opened.");
-	}
-}
-void decoder(int* arrayPointer, int arraySize){
-	int index = 0, pixelCount = 0, edgeLimit = 0;
-	int sum = 0;
-	int width, size;
-
-	bool test = true;
-	FILE* file; 
-	size = arrayPointer[index]*arrayPointer[index+1];
-	index = 2;
-	for(index=2;index<arraySize;index+=2)
-		sum+=arrayPointer[index];
-
-	if(sum == size){
-		printf("\n\nNumber of pixels in the original file and the pixel sum in the encoded file are matched, first control is successful!\n");
-		index = 3;
-		while( test==true&& index < arraySize ){
-			if( arrayPointer[index] <= 255 && arrayPointer[index] >= 0){
-				index += 2;
-			}else{
-				test = false;
-				printf("\nError! Pixel's color value out of range, second control is failed!\n");	
-			}
-		}
-		index = 2;
-		if(test == true){
-			printf("\nPixel's color range is valid, second control is successful!\n");
-			while(index+2 < arraySize && test==true){
-				if(arrayPointer[index+1] != arrayPointer[index+3]){
-					index+= 2;
-				}else{
-					test = false;
-					printf("\nError! File was not encoded correcty, third control is failed!\n");
-				}
-			}
-			if(test == true){
-				printf("\nFile is encoded correctly, third control is successful!\n ");
-				index = 2;
-				file = fopen("test_decoded.pgm","w+");
-				width = arrayPointer[index-2];
-				fprintf(file, "P2\n%d %d\n255\n", arrayPointer[index-2],arrayPointer[index-1]);
-				printf("\nAll file controls succesfully passed! Starting to Decode...\n\n");
-				for(index =2;index<arraySize;index+=2){
-					while(pixelCount < arrayPointer[index]){
-						if(edgeLimit <= width){
-							edgeLimit++;
-							fprintf(file,"%d ",arrayPointer[index+1]);
-							pixelCount++;
-							
-						}else{
-							fprintf(file,"\n");
-							edgeLimit=0;
-						}						
-					}
-					
-					pixelCount = 0;
-				}
-				fclose(file);
-				printf("\nFinished Decoding! test_decoded.pgm File is Available now!\n\n");
-			}
-		}
-	}else{
-		printf("\nError! Max pixel count doesn't match, first control is failed!\n");
-	}
-	
-}
-/*	
-void changeSpecificPixel(int* arrayPointer, int arraySize){
-	int index = 2;
-	int pos_x, pos_y, value;
-	int pos, sum = 0;
-	int check = 0, tmp = 0;
-	bool test=true;
-	printf("\nPlease enter the coordinates: (x,y)");
-	scanf("%d %d", &pos_x, &pos_y);
-	printf("Please enter the pixel value: ");
-	scanf("%d", &value);
-	pos = arrayPointer[0]*pos_x + pos_y + 1;
-	FILE* fp = fopen("test_encoded.txt","w+");
-	
-	if(fp){
-		while(index < arraySize){
-			sum += arrayPointer[index];
-			if(sum >= pos && check != -1){
-				check = pos + arrayPointer[index] - sum;
-				while(check > 0){
-					if(check == 1){
-						if(tmp == 0){
-							if(arrayPointer[index] == 0){
-								fprintf(fp,"1 %d ",value);
-								printf("1 %d ", value);
-							}else{
-								fprintf(fp,"1 %d %d %d ",value, arrayPointer[index]-1, arrayPointer[index+1]);
-								printf("1 %d %d %d ", value, arrayPointer[index]-1, arrayPointer[index+1]);
-							}
-						}else{
-							fprintf(fp,"%d %d ",tmp, arrayPointer[index]);
-							printf("%d %d ", tmp, arrayPointer[index]);
-							fprintf(fp,"1 %d ", value);
-							printf("1 %d ", value);
-							if(arrayPointer[index-1]-1 > 0){
-							 	fprintf(fp,"%d %d ", arrayPointer[index-1]-1,arrayPointer[index]);
-								printf("%d %d ", arrayPointer[index-1]-1,arrayPointer[index]);
-							}
-						}
-						check = -1;
-						arrayPointer[index+1]++;
-						index = index + 2;
-					}						
-					arrayPointer[index-1]--;			
-					tmp++;					
-					check--;					
-				}
-			}else{
-				fprintf(fp,"%d %d ",arrayPointer[index-1],arrayPointer[index]);
-				printf("%d %d ",arrayPointer[index-1],arrayPointer[index]);
-				index +=2;	
-			}
-		}
-	}
-}*/
-void changePixelColor(int* arrayPointer, int arraySize){
-    int oldPixel,newPixel;
-    int index;
-    bool test = false;
-    printf("Please select color to change : \n");
-    scanf("%d",&oldPixel);
-	printf("Please type the new color: \n");
-    scanf("%d",&newPixel);
-    if(newPixel >= 0 && newPixel <= 255){
-	    for(index=2;index<arraySize;index+=2){
-	        if(arrayPointer[index+1]==oldPixel){
-	        	test =true;
-	            arrayPointer[index+1]=newPixel;	
-	        }
-	       
-	    }
-	    if(test==false){
-	    	printf("\nError! The color you are looking for is not exist in the file \n");
-		}
-		else{
-			FILE* fp = fopen("test_encoded.txt","w+");
-			if(fp){	
-				for(index = 0; index<arraySize; index++){
-					fprintf(fp, "%d ",arrayPointer[index]);
-					printf("%d ",arrayPointer[index]);
-				}
-				printf("\nSelected color is changed!\n");
-				fclose(fp);
-			}
-			
-		}
-	}
-}
-void printHistogram(int* arrayPointer, int arraySize){
-	float histogram[256] = {0};
-	int index;
-	float ratio,total;
-	total=arrayPointer[0]*arrayPointer[1];
-	for(index=2;index<arraySize;index+=2)
-		histogram[arrayPointer[index+1]] += arrayPointer[index];
-	
-	index = 0;
-	FILE* fp = fopen("test_encoded.txt","a");
-	fprintf(fp,"\n");
-	for(index=0;index<256;index++){
-		if(histogram[index] != 0){
-		
-		ratio=(float) (histogram[index]/total);
-		printf("\nTimes Used: %.0f , The Color: %d ,Color Ratio: %f percent\n", histogram[index],index,ratio*100.0);
-			// fprintf(fp,"\nTimes Used:%d , The Color: %d\n", histogram[index],index);  histogramý dosyaya yazma islemi yapýlmýstýr ancak kaldýrýldý	
-			}
-	}
-	fclose(fp);
+        printf("\nHeader information of the file: \n\n");
+        printf("%s %d %d %d\n", image_type, *width, *height, *max_val);
+        return true;
+    } else {
+        fprintf(stderr, "Error: Invalid PGM header or unsupported format. Expected P2.\n");
+        // File pointer needs to be closed by the caller if this function returns false
+        return false;
+    }
 }
 
-int main(){
-											
-	
-	bool exit=false;
+// Encodes PGM pixel data using RLE
+// Returns dynamically allocated EncodedData on success, NULL on failure.
+EncodedData* encode_pgm(FILE* fp, int width, int height, int max_val) {
+    if (!fp) return NULL;
+
+    // Use a dynamic array (like a vector in C++) by reallocating
+    int* temp_data = NULL;
+    int current_capacity = 0;
+    int current_size = 0; // Number of integers (pairs * 2 + 2 for w/h)
+
+    int element1, element2;
+    int index = 0; // run length
+
+    // Allocate initial capacity (can be arbitrary, will grow)
+    current_capacity = 10; // Start with space for 10 pairs + w/h
+    temp_data = (int*)malloc(current_capacity * 2 * sizeof(int) + 2 * sizeof(int));
+    if (!temp_data) {
+        perror("Error allocating memory for encoding");
+        return NULL;
+    }
+
+    // Store width and height at the beginning
+    temp_data[0] = width;
+    temp_data[1] = height;
+    current_size = 2;
+
+    // Read the first pixel value outside the loop
+    if (fscanf(fp, "%d", &element2) == 1) {
+        index = 1; // Start run length for the first pixel
+    } else {
+        // Handle case of empty pixel data (shouldn't happen in valid PGM)
+        fprintf(stderr, "Error: Could not read first pixel value.\n");
+        free(temp_data);
+        return NULL;
+    }
+
+    // Read subsequent pixel values
+    while (fscanf(fp, "%d", &element1) == 1) {
+        if (element1 == element2) {
+            index++;
+        } else {
+            // End of a run, store the pair (index, element2)
+            if (current_size + 2 > current_capacity * 2 + 2) {
+                current_capacity *= 2; // Double capacity
+                int* new_data = (int*)realloc(temp_data, current_capacity * 2 * sizeof(int) + 2 * sizeof(int));
+                if (!new_data) {
+                    perror("Error reallocating memory during encoding");
+                    free(temp_data);
+                    return NULL;
+                }
+                temp_data = new_data;
+            }
+            temp_data[current_size++] = index;     // Store count
+            temp_data[current_size++] = element2;   // Store value
+
+            index = 1; // Start new run with element1
+            element2 = element1;
+        }
+    }
+
+    // Store the last run
+    if (current_size + 2 > current_capacity * 2 + 2) {
+         current_capacity += 2; // Add just enough for the last pair
+         int* new_data = (int*)realloc(temp_data, current_capacity * 2 * sizeof(int) + 2 * sizeof(int));
+         if (!new_data) {
+             perror("Error reallocating memory during encoding");
+             free(temp_data);
+             return NULL;
+         }
+         temp_data = new_data;
+    }
+    temp_data[current_size++] = index;     // Store count
+    temp_data[current_size++] = element2;   // Store value // element2 holds the last pixel value
+
+    // Create the final EncodedData structure
+    EncodedData* encoded_data = (EncodedData*)malloc(sizeof(EncodedData));
+    if (!encoded_data) {
+         perror("Error allocating memory for EncodedData structure");
+         free(temp_data);
+         return NULL;
+    }
+
+    encoded_data->width = width;
+    encoded_data->height = height;
+    encoded_data->num_pairs = (current_size - 2) / 2; // Total integers minus w/h, divided by 2
+    encoded_data->data = (int*)realloc(temp_data, current_size * sizeof(int)); // Trim to actual size
+     if (!encoded_data->data && current_size > 0) { // realloc can return NULL if size > 0 and fails
+        perror("Error trimming memory after encoding");
+        free(temp_data); // free the original pointer if realloc failed
+        free(encoded_data);
+        return NULL;
+    } else if (!encoded_data->data && current_size == 0 && temp_data != NULL) {
+         // Special case: If size is 0, realloc(temp_data, 0) might return NULL or non-NULL.
+         // If it's NULL and temp_data was not NULL, we might lose the original pointer if not careful.
+         // But given the logic, current_size will always be at least 4 (w, h, count1, value1).
+         // So this else if branch for size == 0 is likely not needed but added for robustness.
+         free(temp_data); // Ensure original temp_data is freed if realloc(0) fails and temp_data was valid.
+         encoded_data->data = NULL; // Set data to NULL as there is no data
+    }
+
+
+    printf("\nEncoding complete. Encoded data size: %d integers (%d pairs)\n", current_size, encoded_data->num_pairs);
+
+    return encoded_data;
+}
+
+// Writes encoded data to a text file
+bool write_encoded_data(const char* filename, const EncodedData* encoded_data) {
+    if (!encoded_data || !encoded_data->data) {
+        fprintf(stderr, "Error: No encoded data to write.\n");
+        return false;
+    }
+
+    FILE* file = fopen(filename, "w+"); // Use w+ to create/truncate and allow reading back if needed
+    if (!file) {
+        perror("Error opening file for writing encoded data");
+        return false;
+    }
+
+    // Write width and height first
+    fprintf(file, "%d %d ", encoded_data->width, encoded_data->height);
+
+    // Write count-value pairs
+    for (int i = 0; i < encoded_data->num_pairs * 2; i += 2) {
+        fprintf(file, "%d %d ", encoded_data->data[i + 2], encoded_data->data[i + 3]); // data[0]/[1] are w/h, pairs start at index 2
+    }
+    fprintf(file, "\n"); // Add a newline at the end
+
+    if (fclose(file) == EOF) {
+        perror("Error closing encoded file after writing");
+        return false;
+    }
+
+    printf("Encoded data written to %s\n", filename);
+    return true;
+}
+
+
+// Loads encoded data from a text file into EncodedData structure
+// Returns dynamically allocated EncodedData on success, NULL on failure.
+EncodedData* load_encoded_data(const char* filename) {
+    FILE* fp = fopen(filename, "r");
+    if (!fp) {
+        perror("Error opening encoded file for reading");
+        return NULL;
+    }
+
     int width, height;
-    char fileName[15];
-	int arraySize,selection;
-  	int* arrayPointer;
-	FILE* fp;
-	printf("\n------WELCOME------\n");
-	while(exit==false){	
-		printf("\nPlease select an option: (ex: 1,2,3) \n");
-		printf("\n\n1--->File Encoding(Includes file operations on an encoded file)\n\n2--->File Decoding\n\n3--->Exit\n\n");
-		printf("\nSelection:");
-		scanf("%d", &selection);
-		switch(selection){
-		  	case 1:
-		    	printf("\n Please type the file name(.pgm): ");
-		    	scanf("%s",fileName);
-		    	fp= fopen(fileName, "r");
-		    	if(headerInfo(fp, &width, &height)){
-		    		printf("\n Encoding the file...\n");
-			        encoder(fp, width, height);
-			        fclose(fp);
-			        arrayPointer = (int*)malloc(width*height*sizeof(int));
-			        arraySize = refreshArray(arrayPointer, width, height);
-			        printf("\n Process is completed. \n\n");
-			    	do{
-			    		printf("\n\nPlease select an option for the test_encoded.txt file or return to main menu: \n");
-						printf("\n1)Change Pixel Colors\n2)Change Pixel\n3)Print Histogram\n0)Main Menu\n");
-						scanf("%d", &selection);
-						switch(selection){
-							case 1:
-								changePixelColor(arrayPointer, arraySize);
-								
-								break;
-							case 2:
-								changeSpecificPixel(arrayPointer, arraySize);
-								printf("\nThe pixel on the selected coordinates is changed.\n");
-								break;
-							case 3:
-								printf("\nPrinting Histogram...\n");
-								printHistogram(arrayPointer, arraySize);
-								
-								break;
-							case 0:
-								printf("\nReturning Main Menu...\n");
-								break;
-							default:
-								printf("\n Please Try Again\n");
-						}										
-					}while(selection != 0);
-				}else{
-			        printf("\nError! File doesn't match.");
-			    }
-			    
-		    	break;
-		 	case 2:
-				printf("\nPlease type the file name (.txt): ");
-		    	scanf("%s",fileName);
-		    	fp = fopen(fileName, "r");
-		    	fscanf(fp,"%d %d",&width,&height);
-				arrayPointer = (int*)malloc(width*height*sizeof(int));
-				arraySize = refreshArray(arrayPointer, width, height);
-			    decoder(arrayPointer,arraySize);
-		    	break;
-		    case 3:
-		    	printf("\n Program Closing...");
-		    	exit=true;
-		    	break;
-		    	return 0;
-		 	default:
-	    		printf("\nPlease Type Again: ");
-	    }
-	}
-	return 0;
+    // Read width and height first
+    if (fscanf(fp, "%d %d", &width, &height) != 2) {
+        fprintf(stderr, "Error reading width and height from encoded file.\n");
+        fclose(fp);
+        return NULL;
+    }
+
+    // Read the rest of the integers (count-value pairs) dynamically
+    int* temp_data = NULL;
+    int current_capacity = 0;
+    int current_size = 0; // Number of integers read (excluding w/h initially)
+
+    int value;
+    while (fscanf(fp, "%d", &value) == 1) {
+        if (current_size >= current_capacity) {
+            current_capacity = (current_capacity == 0) ? 10 : current_capacity * 2;
+            int* new_data = (int*)realloc(temp_data, current_capacity * sizeof(int));
+            if (!new_data) {
+                perror("Error reallocating memory during loading encoded data");
+                free(temp_data);
+                fclose(fp);
+                return NULL;
+            }
+            temp_data = new_data;
+        }
+        temp_data[current_size++] = value;
+    }
+
+    fclose(fp); // Close the file after reading
+
+    if (current_size % 2 != 0) {
+        fprintf(stderr, "Warning: Encoded file has an odd number of data values after width/height. File may be corrupt.\n");
+        // Decide whether to fail or continue. For now, we'll continue but warn.
+    }
+
+    // Create the final EncodedData structure
+    EncodedData* encoded_data = (EncodedData*)malloc(sizeof(EncodedData));
+    if (!encoded_data) {
+         perror("Error allocating memory for EncodedData structure");
+         free(temp_data);
+         return NULL;
+    }
+
+    encoded_data->width = width;
+    encoded_data->height = height;
+    encoded_data->num_pairs = current_size / 2;
+    encoded_data->data = (int*)realloc(temp_data, current_size * sizeof(int)); // Trim to actual size
+    if (!encoded_data->data && current_size > 0) { // realloc can return NULL if size > 0 and fails
+        perror("Error trimming memory after loading encoded data");
+        free(temp_data); // free the original pointer if realloc failed
+        free(encoded_data);
+        return NULL;
+    } else if (!encoded_data->data && current_size == 0 && temp_data != NULL) {
+         free(temp_data);
+         encoded_data->data = NULL;
+    }
+
+
+    printf("Encoded data loaded from %s. Width: %d, Height: %d, %d pairs.\n", filename, width, height, encoded_data->num_pairs);
+
+    return encoded_data;
+}
+
+
+// Decodes encoded data and writes to a PGM (P2) file
+bool decode_pgm(const EncodedData* encoded_data, const char* output_filename) {
+    if (!encoded_data || !encoded_data->data || encoded_data->num_pairs == 0) {
+        fprintf(stderr, "Error: No encoded data to decode.\n");
+        return false;
+    }
+
+    // Basic checks on encoded data integrity
+    long long total_pixels_sum = 0;
+    for (int i = 0; i < encoded_data->num_pairs * 2; i += 2) {
+        int count = encoded_data->data[i];
+        int value = encoded_data->data[i + 1];
+        if (count <= 0) {
+             fprintf(stderr, "Error: Invalid count (%d) found in encoded data.\n", count);
+             return false;
+        }
+        if (value < 0 || value > 255) { // Assuming 8-bit PGM (max 255)
+             fprintf(stderr, "Error: Invalid pixel value (%d) found in encoded data.\n", value);
+             return false;
+        }
+        total_pixels_sum += count;
+        if (i + 2 < encoded_data->num_pairs * 2) { // Check if consecutive values are different (RLE property)
+            if (value == encoded_data->data[i + 3]) {
+                fprintf(stderr, "Error: Invalid encoded data. Consecutive runs have the same pixel value (%d).\n", value);
+                return false;
+            }
+        }
+    }
+
+    if (total_pixels_sum != (long long)encoded_data->width * encoded_data->height) {
+        fprintf(stderr, "Error: Total pixel count from encoded data (%lld) does not match header size (%d x %d = %d).\n",
+                total_pixels_sum, encoded_data->width, encoded_data->height, encoded_data->width * encoded_data->height);
+        return false;
+    }
+
+    printf("\nAll file controls successfully passed! Starting to Decode...\n\n");
+
+    FILE* file = fopen(output_filename, "w+");
+    if (!file) {
+        perror("Error opening file for writing decoded PGM");
+        return false;
+    }
+
+    // Write PGM P2 header (assuming 255 max value as per original code)
+    fprintf(file, "P2\n%d %d\n255\n", encoded_data->width, encoded_data->height);
+
+    int pixels_on_current_line = 0;
+    for (int i = 0; i < encoded_data->num_pairs * 2; i += 2) {
+        int count = encoded_data->data[i];
+        int value = encoded_data->data[i + 1];
+
+        for (int j = 0; j < count; ++j) {
+            fprintf(file, "%d", value);
+            pixels_on_current_line++;
+
+            if (pixels_on_current_line == encoded_data->width) {
+                fprintf(file, "\n"); // Newline after width pixels
+                pixels_on_current_line = 0;
+            } else {
+                fprintf(file, " "); // Space between pixel values on the same line
+            }
+        }
+    }
+
+    // Ensure file ends with a newline if the last line was full
+    if (pixels_on_current_line != 0) {
+         fprintf(file, "\n");
+    }
+
+
+    if (fclose(file) == EOF) {
+        perror("Error closing decoded PGM file after writing");
+        return false;
+    }
+
+    printf("Finished Decoding! %s File is Available now!\n\n", output_filename);
+    return true;
+}
+
+
+// Changes all occurrences of a specific pixel color value in the encoded data
+void change_pixel_color(EncodedData* encoded_data, int oldPixel, int newPixel) {
+    if (!encoded_data || !encoded_data->data) {
+        fprintf(stderr, "Error: No encoded data loaded.\n");
+        return;
+    }
+
+    if (oldPixel < 0 || oldPixel > 255 || newPixel < 0 || newPixel > 255) {
+        fprintf(stderr, "Error: Pixel values must be between 0 and 255.\n");
+        return;
+    }
+
+    bool changed = false;
+    // Iterate through count-value pairs (data starts at index 0 now in the data array)
+    for (int i = 0; i < encoded_data->num_pairs * 2; i += 2) {
+        if (encoded_data->data[i + 1] == oldPixel) {
+            encoded_data->data[i + 1] = newPixel;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        printf("\nSelected color %d is changed to %d!\n", oldPixel, newPixel);
+        // Note: The change is made in memory. You need to call write_encoded_data
+        // separately to save the changes back to the file.
+        printf("Changes made in memory. Use the save option to write to file.\n");
+    } else {
+        printf("\nError: The color %d is not found in the encoded data.\n", oldPixel);
+    }
+}
+
+/*
+// --- Change Specific Pixel (Needs significant work) ---
+// This function was commented out in the original code.
+// Modifying a single pixel in Run-Length Encoded data is complex
+// because it might require splitting an existing run into two or three runs,
+// or merging adjacent runs if the new pixel value matches neighbours.
+//
+// Example:
+// Original RLE: ... 100 50 ... (100 pixels of value 50)
+// Change pixel at position 5 in this run to value 60
+// Resulting RLE: ... 5 50 1 60 94 50 ... (Splits the original run)
+//
+// Example 2:
+// Original RLE: ... 5 50 10 60 8 50 ...
+// Change pixel at the end of the first run (pos 5) to value 60
+// Resulting RLE: ... 4 50 15 60 8 50 ... (Merges two runs)
+//
+// The commented-out implementation attempted to manipulate indices and values
+// within the flattened array, which is prone to errors when runs need splitting
+// or merging. A robust implementation would likely need to create a new list
+// of RLE pairs by iterating through the original data, applying the change at
+// the correct logical position (which first requires calculating the position
+// within the flattened RLE data), and generating the new sequence of runs.
+//
+// Due to its complexity and incomplete state, this function is left commented out.
+void changeSpecificPixel(EncodedData* encoded_data, int pos_x, int pos_y, int value) {
+    // Implementation would go here if fixed
+    printf("\nChange specific pixel functionality is complex and not implemented.\n");
+}
+*/
+
+
+// Prints a histogram of pixel values in the encoded data
+void print_histogram(const EncodedData* encoded_data) {
+    if (!encoded_data || !encoded_data->data || encoded_data->num_pairs == 0) {
+        fprintf(stderr, "Error: No encoded data loaded for histogram.\n");
+        return;
+    }
+
+    long long histogram[256] = {0}; // Use long long for counts
+    long long total_pixels = (long long)encoded_data->width * encoded_data->height;
+
+    // Iterate through count-value pairs
+    for (int i = 0; i < encoded_data->num_pairs * 2; i += 2) {
+        int count = encoded_data->data[i];
+        int value = encoded_data->data[i + 1];
+        if (value >= 0 && value <= 255) {
+             histogram[value] += count;
+        }
+    }
+
+    printf("\n--- Pixel Color Histogram ---\n");
+    for (int i = 0; i < 256; ++i) {
+        if (histogram[i] > 0) {
+            double ratio = (double)histogram[i] / total_pixels * 100.0;
+            printf("Color: %d, Count: %lld, Ratio: %.2f%%\n", i, histogram[i], ratio);
+        }
+    }
+    printf("-----------------------------\n");
+
+    // Original code appended to test_encoded.txt - removed as likely unintended.
+    // If file output is needed, open a separate file (e.g., test_histogram.txt)
+}
+
+// Frees the memory allocated for the EncodedData structure
+void free_encoded_data(EncodedData* encoded_data) {
+    if (encoded_data) {
+        free(encoded_data->data); // Free the data array
+        free(encoded_data);       // Free the structure itself
+    }
+}
+
+// --- Main Function ---
+
+int main() {
+    bool exit_program = false;
+    int selection;
+    char filename[256]; // Increased buffer size for filename
+    FILE* fp = NULL;
+    EncodedData* current_encoded_data = NULL; // Pointer to currently loaded encoded data
+
+    printf("\n------WELCOME------\n");
+
+    while (!exit_program) {
+        // Free previously loaded data if any, before new main menu selection
+        free_encoded_data(current_encoded_data);
+        current_encoded_data = NULL;
+
+        printf("\nPlease select an option: (ex: 1,2,3)\n");
+        printf("\n1) File Encoding\n2) File Decoding\n3) Exit\n"); // Simplified main menu
+        printf("\nSelection: ");
+
+        if (scanf("%d", &selection) != 1) {
+             fprintf(stderr, "Invalid input. Please enter a number.\n");
+             // Clear input buffer
+             while (getchar() != '\n');
+             continue; // Restart loop
+        }
+
+        switch (selection) {
+            case 1: // File Encoding
+                printf("\nPlease type the input PGM file name (.pgm): ");
+                if (scanf("%s", filename) != 1) {
+                    fprintf(stderr, "Error reading filename.\n");
+                    break;
+                }
+                fp = fopen(filename, "r");
+                if (!fp) {
+                    perror("Error opening input PGM file");
+                    break;
+                }
+
+                int width, height, max_val;
+                if (read_pgm_header(fp, &width, &height, &max_val)) {
+                    printf("\nEncoding the file...\n");
+                    // Pass fp directly for encoding
+                    EncodedData* encoded_result = encode_pgm(fp, width, height, max_val);
+                    fclose(fp); // Close input file after reading
+
+                    if (encoded_result) {
+                        printf("Encoding process completed.\n");
+                        // Automatically write the encoded data to a default file
+                        if (write_encoded_data("test_encoded.txt", encoded_result)) {
+                            printf("Encoded data saved to test_encoded.txt.\n");
+                            // Load it into current_encoded_data for sub-menu operations
+                            current_encoded_data = encoded_result; // Keep the data in memory
+                            encoded_result = NULL; // Avoid double free
+                        } else {
+                            // Writing failed, free the encoded data
+                            free_encoded_data(encoded_result);
+                            encoded_result = NULL;
+                        }
+
+                        // --- Encoded File Operations Sub-menu ---
+                        if (current_encoded_data) {
+                            int sub_selection;
+                             do {
+                                printf("\n\nPlease select an option for test_encoded.txt (in memory): \n");
+                                printf("\n1) Change Pixel Colors\n2) Print Histogram\n3) Save Encoded Data to File\n0) Return to Main Menu\n"); // Removed Change Pixel as it's complex
+                                printf("\nSelection: ");
+
+                                if (scanf("%d", &sub_selection) != 1) {
+                                    fprintf(stderr, "Invalid input. Please enter a number.\n");
+                                    // Clear input buffer
+                                    while (getchar() != '\n');
+                                    continue; // Restart sub-menu loop
+                                }
+
+                                switch (sub_selection) {
+                                    case 1: // Change Pixel Colors
+                                        { // Use a block to scope variables
+                                            int old_color, new_color;
+                                            printf("Enter color to change (0-255): ");
+                                            if (scanf("%d", &old_color) != 1) {
+                                                fprintf(stderr, "Invalid input.\n");
+                                                while (getchar() != '\n');
+                                                break;
+                                            }
+                                            printf("Enter new color (0-255): ");
+                                             if (scanf("%d", &new_color) != 1) {
+                                                fprintf(stderr, "Invalid input.\n");
+                                                while (getchar() != '\n');
+                                                break;
+                                            }
+                                            change_pixel_color(current_encoded_data, old_color, new_color);
+                                            // Changes are in memory, need to save later
+                                        }
+                                        break;
+                                    case 2: // Print Histogram
+                                        print_histogram(current_encoded_data);
+                                        break;
+                                    case 3: // Save Encoded Data
+                                         {
+                                             char output_filename[256];
+                                             printf("Enter filename to save encoded data to: ");
+                                              if (scanf("%s", output_filename) != 1) {
+                                                fprintf(stderr, "Error reading filename.\n");
+                                                break;
+                                            }
+                                             if (write_encoded_data(output_filename, current_encoded_data)) {
+                                                printf("Encoded data saved successfully.\n");
+                                             }
+                                         }
+                                         break;
+                                    case 0: // Return
+                                        printf("\nReturning to Main Menu...\n");
+                                        break;
+                                    default:
+                                        printf("\nInvalid selection. Please try again.\n");
+                                }
+                            } while (sub_selection != 0);
+                        } // if (current_encoded_data)
+                    } // if (encoded_result)
+                    // else encoding failed, error message already printed
+                } else {
+                     // Header read failed, error message already printed
+                     fclose(fp); // Ensure file is closed on header failure
+                }
+                break;
+
+            case 2: // File Decoding
+                printf("\nPlease type the input encoded file name (.txt): ");
+                 if (scanf("%s", filename) != 1) {
+                    fprintf(stderr, "Error reading filename.\n");
+                    break;
+                }
+                current_encoded_data = load_encoded_data(filename); // Load encoded data
+                if (current_encoded_data) {
+                     char output_filename[256];
+                     printf("Enter output PGM file name (.pgm): ");
+                      if (scanf("%s", output_filename) != 1) {
+                        fprintf(stderr, "Error reading filename.\n");
+                        free_encoded_data(current_encoded_data);
+                        current_encoded_data = NULL;
+                        break;
+                    }
+                    // Decode and write the PGM file
+                    decode_pgm(current_encoded_data, output_filename);
+                }
+                // Memory for current_encoded_data will be freed at the start of the next main loop iteration
+                break;
+
+            case 3: // Exit
+                printf("\nProgram Closing...\n");
+                exit_program = true;
+                break;
+
+            default:
+                printf("\nInvalid selection. Please try again.\n");
+        }
+    }
+
+    // Final cleanup if user exited without going through main loop cleanup
+    free_encoded_data(current_encoded_data);
+
+    return 0;
 }
